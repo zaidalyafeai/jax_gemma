@@ -66,10 +66,21 @@ parser.add_argument('--model_name', type=str, default="google/gemma-2b-it",
                     help='The model name or path (default: google/gemma-2b-it)')
 parser.add_argument('--max_new_tokens', type=int, default=4096,
                     help='Maximum number of new tokens to generate (default: 4096)')
+parser.add_argument('--batch_size', type=int, default=8,
+                    help='Batch size for generation (default: 8, must be a multiple of 8 for TPU)')
+parser.add_argument('--prompt', type=str, default="Write an article about AI",
+                    help='Prompt text to use for generation (default: "Write an article about AI")')
 args = parser.parse_args()
 
 model_name = args.model_name
 max_new_tokens = args.max_new_tokens
+batch_size = args.batch_size
+prompt = args.prompt
+
+# Ensure batch size is a multiple of device count
+num_devices = jax.device_count()
+if batch_size % num_devices != 0:
+    raise ValueError(f"Batch size ({batch_size}) must be a multiple of device count ({num_devices})")
 
 model, params = FlaxGemmaForCausalLM.from_pretrained(model_name, revision="flax", _do_init=False, dtype=jnp.bfloat16, token=hf_token)
 
@@ -89,7 +100,7 @@ Next, we'll define our text inputs. Since we have 8 TPU cores over which we want
 In this example, we'll define a single prompt and copy it 8 times, giving a total batch size of 8. The "per-device" batch size is then 1/8 of this, or 1. In practice, this is not very useful or realistic, since each of our parallel computations will be processing the same input. However, you're free to extend this to use more realistic prompts than the one given below. Just ensure that the resulting batch size is a multiple of 8.
 """
 
-input_text = 8 * ["Write an article about AI"]
+input_text = [prompt] * batch_size
 
 """We can pre-process our input text to token ids using the tokenizer. TPUs expect inputs of static shape, so we'll define our maximum prompt length to be 64, and always pad our inputs to this sequence length:"""
 
