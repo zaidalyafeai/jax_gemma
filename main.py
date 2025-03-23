@@ -50,6 +50,7 @@ hf_token = user_secrets.get_secret("HF_TOKEN")
 
 
 import time
+import argparse
 
 import jax
 import jax.numpy as jnp
@@ -59,7 +60,18 @@ from flax.training.common_utils import shard
 
 from transformers import FlaxGemmaForCausalLM, AutoTokenizer
 
-model, params = FlaxGemmaForCausalLM.from_pretrained("google/gemma-2b-it", revision="flax", _do_init=False, dtype=jnp.bfloat16, token=hf_token)
+# Add argument parsing
+parser = argparse.ArgumentParser(description='Run JAX Gemma model inference')
+parser.add_argument('--model_name', type=str, default="google/gemma-2b-it",
+                    help='The model name or path (default: google/gemma-2b-it)')
+parser.add_argument('--max_new_tokens', type=int, default=4096,
+                    help='Maximum number of new tokens to generate (default: 4096)')
+args = parser.parse_args()
+
+model_name = args.model_name
+max_new_tokens = args.max_new_tokens
+
+model, params = FlaxGemmaForCausalLM.from_pretrained(model_name, revision="flax", _do_init=False, dtype=jnp.bfloat16, token=hf_token)
 
 """If you're coming from PyTorch, the only major difference in API is how the model and parameters are handled. PyTorch is a _stateful_ framework, in which the weights are stored within the model instance. In JAX, most transformations (notably `jax.jit`) require functions that are _stateless_, meaning that they have no side effects (see [Stateful Computations](https://jax.readthedocs.io/en/latest/jax-101/07-state.html) in JAX). Since Flax models are designed to work well with JAX transformations, they too are stateless. This means that the model weights are stored **outside** of the model definition, and need to be passed as an input during inference.
 
@@ -68,7 +80,7 @@ We see a warning that the model parameters were loaded in bfloat16 precision - t
 The corresponding tokenizer can now be loaded using a similar API:
 """
 
-tokenizer = AutoTokenizer.from_pretrained("google/gemma-2b-it", token=hf_token)
+tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
 
 """## Define Inputs
 
@@ -128,8 +140,6 @@ The number of maximum generated tokens `max_new_tokens` undergoes control flow i
 
 To avoid re-compiling the generate function for different values of `max_new_tokens`, we'll define it as a global variable here, and pass it to the generate function each time:
 """
-
-max_new_tokens = 4096
 
 """We can now compile our parallel generate function. This done automatically the first time the function is run and will take some time to complete (typically around 2-3 minutes). A good time to read the JAX [Quick Start Guide](https://jax.readthedocs.io/en/latest/notebooks/quickstart.html) if you haven't already!"""
 
