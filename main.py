@@ -154,44 +154,96 @@ p_generate = jax.pmap(
     generate, "inputs", in_axes=(0, 0, None,), out_axes=0, static_broadcasted_argnums=(2,)
 )
 
-"""The `in_axes` argument to `jax.pmap` defines which axis of the positional arguments to parallelise over. The `inputs` and `params` are parallised over their first axis, which we denote by `0`. The number of generated tokens is a integer, and is thus not parallelised over, which we denote by `None`.
+# Define a list of different prompts to use
+prompts = [
+    "Write a short story about a time traveler",
+    "Explain quantum computing to a 10-year-old",
+    "Create a recipe for chocolate chip cookies",
+    "Write a poem about the ocean",
+    "Describe the benefits of artificial intelligence in healthcare",
+    "Explain how to learn a new language efficiently",
+    "Write a brief history of space exploration",
+    "Describe three strategies for effective time management"
+]
 
-Similarly, the `out_axes` argument defines which axis of the outputs are parallelised over, which in this case is the first axis.
+# Create a function to run generation for each prompt and save output
+def generate_and_save_outputs(prompts, batch_size, max_new_tokens):
+    # Create output directory if it doesn't exist
+    import os
+    output_dir = "generated_outputs"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    results = []
+    
+    for i, prompt in enumerate(prompts):
+        print(f"Generating output for prompt {i+1}/{len(prompts)}: {prompt[:50]}...")
+        
+        # Prepare input with the current prompt
+        input_text = [prompt] * batch_size
+        inputs = tokenizer(
+            input_text,
+            padding="max_length",
+            max_length=max_input_length,
+            return_attention_mask=True,
+            return_tensors="np",
+        )
+        
+        # Shard the inputs
+        sharded_inputs = shard(inputs.data)
+        
+        # Generate text
+        start = time.time()
+        generated_ids = p_generate(sharded_inputs, params, max_new_tokens)
+        runtime = time.time() - start
+        
+        # Process and save the result
+        generated_ids = jax.device_get(generated_ids.reshape(-1, generated_ids.shape[-1]))
+        pred_text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+        
+        # Calculate tokens per second
+        tok_per_s = compute_tok_per_s(sharded_inputs["input_ids"], generated_ids, runtime)
+        
+        # Take the first generated text from the batch
+        output_text = pred_text[0]
+        
+        # Save to file
+        filename = f"{output_dir}/prompt_{i+1}.txt"
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(f"Prompt: {prompt}\n\n")
+            f.write(f"Generated Text:\n{output_text}\n\n")
+            f.write(f"Generation Stats:\n")
+            f.write(f"Runtime: {runtime:.2f} seconds\n")
+            f.write(f"Tokens per second: {tok_per_s:.2f}\n")
+        
+        results.append({
+            "prompt": prompt,
+            "output": output_text,
+            "runtime": runtime,
+            "tokens_per_second": tok_per_s
+        })
+        
+        print(f"Output saved to {filename}")
+    
+    # Save a summary file
+    with open(f"{output_dir}/summary.txt", 'w', encoding='utf-8') as f:
+        f.write("Generation Summary\n")
+        f.write("=================\n\n")
+        for i, result in enumerate(results):
+            f.write(f"Prompt {i+1}: {result['prompt'][:50]}...\n")
+            f.write(f"Runtime: {result['runtime']:.2f} seconds\n")
+            f.write(f"Tokens per second: {result['tokens_per_second']:.2f}\n")
+            f.write("-------------------------------------\n\n")
+    
+    print(f"Summary saved to {output_dir}/summary.txt")
+    return results
 
-The number of maximum generated tokens `max_new_tokens` undergoes control flow in `generate`. However, JIT requires concrete values to trace out the transformed function (see [Control Flow](https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#control-flow) in JAX). Thus, we specify it as a static argument, meaning it is assigned as a concrete value in the control flow. This enables JIT to trace out the function for a specific value of `max_new_tokens`. The caveat is that each value of `max_new_tokens` requires it's own compilation, in-order to trace out the respective branch.
-
-To avoid re-compiling the generate function for different values of `max_new_tokens`, we'll define it as a global variable here, and pass it to the generate function each time:
-"""
-
-"""We can now compile our parallel generate function. This done automatically the first time the function is run and will take some time to complete (typically around 2-3 minutes). A good time to read the JAX [Quick Start Guide](https://jax.readthedocs.io/en/latest/notebooks/quickstart.html) if you haven't already!"""
-
+# Compile the generate function once
+print("Compiling the generation function...")
 _ = p_generate(inputs, params, max_new_tokens)
+print("Compilation complete!")
 
-"""Now that the function is compiled, we can run it again much faster using the optimised kernels:"""
+# Run generation with different prompts and save outputs
+results = generate_and_save_outputs(prompts, batch_size, max_new_tokens)
 
-start = time.time()
-generated_ids = p_generate(inputs, params, max_new_tokens)
-runtime = time.time() - start
-
-"""The generate function returns a batch of generated token ids. To convert these to generated text, we can decode them using the tokenizer:"""
-
-generated_ids = jax.device_get(generated_ids.reshape(-1, generated_ids.shape[-1]))
-pred_text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
-
-"""So how fast was generation? Let's compute the number of tokens generated per-second (tok/s):"""
-
-def compute_tok_per_s(input_ids, generated_ids, runtime):
-    total_inputs = np.prod(input_ids.shape)
-    total_outputs = np.prod(generated_ids.shape)
-    tokens_generated = total_outputs - total_inputs
-    print(f"Tokens generated: {tokens_generated}")
-    tokens_per_s = tokens_generated / runtime
-    return tokens_per_s
-
-tok_per_s = compute_tok_per_s(inputs["input_ids"], generated_ids, runtime)
-
-"""We can then print our runtime, tokens per second, and generated text to the console:"""
-
-print(f"Runtime with pmap: {runtime}")
-print(f"Tokens per second: {tok_per_s}")
-print(pred_text[0])
+# Print completion message
+print("\nAll generations complete! Check the 'generated_outputs' directory for results.")
