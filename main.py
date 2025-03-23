@@ -129,7 +129,7 @@ The number of maximum generated tokens `max_new_tokens` undergoes control flow i
 To avoid re-compiling the generate function for different values of `max_new_tokens`, we'll define it as a global variable here, and pass it to the generate function each time:
 """
 
-max_new_tokens = 512
+max_new_tokens = 4096
 
 """We can now compile our parallel generate function. This done automatically the first time the function is run and will take some time to complete (typically around 2-3 minutes). A good time to read the JAX [Quick Start Guide](https://jax.readthedocs.io/en/latest/notebooks/quickstart.html) if you haven't already!"""
 
