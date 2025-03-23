@@ -66,92 +66,12 @@ parser.add_argument('--model_name', type=str, default="google/gemma-2b-it",
                     help='The model name or path (default: google/gemma-2b-it)')
 parser.add_argument('--max_new_tokens', type=int, default=4096,
                     help='Maximum number of new tokens to generate (default: 4096)')
-parser.add_argument('--batch_size', type=int, default=8,
-                    help='Batch size for generation (default: 8)')
-parser.add_argument('--max_input_length', type=int, default=32,
-                    help='Maximum input length for tokenizer (default: 32)')
 args = parser.parse_args()
 
 model_name = args.model_name
 max_new_tokens = args.max_new_tokens
-batch_size = args.batch_size
-max_input_length = args.max_input_length
 
-# Check if using 7B model, and adjust batch size if needed
-if "7b" in model_name.lower():
-    # Use a much smaller batch size for the 7B model due to memory constraints
-    batch_size = 1  # Reduce to 1 for severe memory constraints
-    print(f"Using 7B model with severe memory constraints - adjusted batch size to {batch_size}")
-    
-    # For more memory savings with 7B model:
-    max_new_tokens = min(max_new_tokens, 256)  # Generate fewer tokens
-    max_input_length = min(max_input_length, 16)  # Shorter inputs
-    print(f"Memory constraints: adjusted max_new_tokens to {max_new_tokens}, max_input_length to {max_input_length}")
-
-# Even for 2B model, you might need to reduce parameters
-if batch_size > 1 and "resource_exhausted" in locals():  # If you've hit the error before
-    batch_size = 1
-    max_new_tokens = min(max_new_tokens, 512)
-    max_input_length = min(max_input_length, 24)
-    print(f"Reducing parameters due to memory constraints: batch_size={batch_size}, max_new_tokens={max_new_tokens}, max_input_length={max_input_length}")
-
-# Load the model with appropriate settings
-model, params = FlaxGemmaForCausalLM.from_pretrained(
-    model_name, 
-    revision="flax", 
-    _do_init=False, 
-    dtype=jnp.bfloat16, 
-    token=hf_token
-)
-
-"""If you're coming from PyTorch, the only major difference in API is how the model and parameters are handled. PyTorch is a _stateful_ framework, in which the weights are stored within the model instance. In JAX, most transformations (notably `jax.jit`) require functions that are _stateless_, meaning that they have no side effects (see [Stateful Computations](https://jax.readthedocs.io/en/latest/jax-101/07-state.html) in JAX). Since Flax models are designed to work well with JAX transformations, they too are stateless. This means that the model weights are stored **outside** of the model definition, and need to be passed as an input during inference.
-
-We see a warning that the model parameters were loaded in bfloat16 precision - this is fine since we also want to keep the parameters in bfloat16 for inference.
-
-The corresponding tokenizer can now be loaded using a similar API:
-"""
-
-tokenizer = AutoTokenizer.from_argument('--model_name', type=str, default="google/gemma-2b-it",
-                    help='The model name or path (default: google/gemma-2b-it)')
-parser.add_argument('--max_new_tokens', type=int, default=4096,
-                    help='Maximum number of new tokens to generate (default: 4096)')
-parser.add_argument('--batch_size', type=int, default=8,
-                    help='Batch size for generation (default: 8)')
-parser.add_argument('--max_input_length', type=int, default=32,
-                    help='Maximum input length for tokenizer (default: 32)')
-args = parser.parse_args()
-
-model_name = args.model_name
-max_new_tokens = args.max_new_tokens
-batch_size = args.batch_size
-max_input_length = args.max_input_length
-
-# Check if using 7B model, and adjust batch size if needed
-if "7b" in model_name.lower():
-    # Use a much smaller batch size for the 7B model due to memory constraints
-    batch_size = 1  # Reduce to 1 for severe memory constraints
-    print(f"Using 7B model with severe memory constraints - adjusted batch size to {batch_size}")
-    
-    # For more memory savings with 7B model:
-    max_new_tokens = min(max_new_tokens, 256)  # Generate fewer tokens
-    max_input_length = min(max_input_length, 16)  # Shorter inputs
-    print(f"Memory constraints: adjusted max_new_tokens to {max_new_tokens}, max_input_length to {max_input_length}")
-
-# Even for 2B model, you might need to reduce parameters
-if batch_size > 1 and "resource_exhausted" in locals():  # If you've hit the error before
-    batch_size = 1
-    max_new_tokens = min(max_new_tokens, 512)
-    max_input_length = min(max_input_length, 24)
-    print(f"Reducing parameters due to memory constraints: batch_size={batch_size}, max_new_tokens={max_new_tokens}, max_input_length={max_input_length}")
-
-# Load the model with appropriate settings
-model, params = FlaxGemmaForCausalLM.from_pretrained(
-    model_name, 
-    revision="flax", 
-    _do_init=False, 
-    dtype=jnp.bfloat16, 
-    token=hf_token
-)
+model, params = FlaxGemmaForCausalLM.from_pretrained(model_name, revision="flax", _do_init=False, dtype=jnp.bfloat16, token=hf_token)
 
 """If you're coming from PyTorch, the only major difference in API is how the model and parameters are handled. PyTorch is a _stateful_ framework, in which the weights are stored within the model instance. In JAX, most transformations (notably `jax.jit`) require functions that are _stateless_, meaning that they have no side effects (see [Stateful Computations](https://jax.readthedocs.io/en/latest/jax-101/07-state.html) in JAX). Since Flax models are designed to work well with JAX transformations, they too are stateless. This means that the model weights are stored **outside** of the model definition, and need to be passed as an input during inference.
 
@@ -169,9 +89,11 @@ Next, we'll define our text inputs. Since we have 8 TPU cores over which we want
 In this example, we'll define a single prompt and copy it 8 times, giving a total batch size of 8. The "per-device" batch size is then 1/8 of this, or 1. In practice, this is not very useful or realistic, since each of our parallel computations will be processing the same input. However, you're free to extend this to use more realistic prompts than the one given below. Just ensure that the resulting batch size is a multiple of 8.
 """
 
-input_text = batch_size * ["Write an article about AI"]
+input_text = 8 * ["Write an article about AI"]
 
 """We can pre-process our input text to token ids using the tokenizer. TPUs expect inputs of static shape, so we'll define our maximum prompt length to be 64, and always pad our inputs to this sequence length:"""
+
+max_input_length = 32
 
 inputs = tokenizer(
     input_text,
@@ -183,31 +105,7 @@ inputs = tokenizer(
 
 """We now need to copy the model parameters to each TPU core. Each core will hold it's own copy of the parameters, such that it can run a model generation in parallel with the others. Copying the parameters across devices is achieved simply with the [`replicate`](https://flax.readthedocs.io/en/latest/api_reference/flax.jax_utils.html#flax.jax_utils.replicate) method from Flax."""
 
-# Option 1: If your TPU has multiple devices but not enough memory per device
-# Use model parallelism instead of data parallelism
-from jax.experimental import mesh_utils
-from jax.experimental.pjit import pjit
-from jax.sharding import PartitionSpec
-
-# Create a mesh for model parallelism
-devices = mesh_utils.create_device_mesh((8,))  # Assuming 8 TPU cores
-with jax.experimental.maps.mesh(devices, ('dp',)):
-    # Partition the parameters across devices
-    params = jax.experimental.pjit.pjit(
-        lambda x: x,
-        in_shardings=None,
-        out_shardings=PartitionSpec('dp'),
-    )(params)
-
-# Option 2: If memory is still an issue, use the simplest approach - process one sample at a time
-# Use a single device and lower precision
-import jax.numpy as jnp
-params = params.copy()  # Make a copy to avoid modifying the original
-# Use even lower precision if needed
-params = jax.tree_map(lambda x: x.astype(jnp.bfloat16), params)
-
-# Choose only the first TPU device if replicate doesn't work
-params = jax.device_put(params, jax.devices()[0])
+params = jax_utils.replicate(params)
 
 """Similarly, we need to split (or shard) our inputs across TPU cores. Given input ids of shape `(bsz, seq_len)`, we'll shard them to `(num_devices, bsz / num_devices, seq_len)`. In doing so, each device can receive a batch of shape `(bsz / num_devices, seq_len)`, in order to leverage data parallelism across TPU cores. Sharding our inputs is achieved with the Flax helper function [`shard`](https://flax.readthedocs.io/en/latest/api_reference/flax.training.html#flax.training.common_utils.shard):"""
 
@@ -220,31 +118,38 @@ We can now define our data-parallel method for inference. The Transformers [`gen
 To achieve this, we'll wrap the `generate` method with the [`jax.pmap`](https://jax.readthedocs.io/en/latest/_autosummary/jax.pmap.html) transformation. The `jax.pmap` transformation compiles the `generate` method with XLA, and prepares a function that can be executed in parallel across TPU devices.
 """
 
-def generate_single_device(input_ids, attention_mask, params, max_new_tokens):
+def generate(inputs, params, max_new_tokens):
     generated_ids = model.generate(
-        input_ids,
-        attention_mask=attention_mask,
+        inputs["input_ids"],
+        attention_mask=inputs["attention_mask"],
         params=params,
         max_new_tokens=max_new_tokens,
         do_sample=True,
     )
     return generated_ids.sequences
 
-# Process inputs one at a time to save memory
-generated_ids = []
-for i in range(len(input_text)):
-    single_input = {
-        "input_ids": inputs["input_ids"][i:i+1],
-        "attention_mask": inputs["attention_mask"][i:i+1]
-    }
-    result = generate_single_device(single_input["input_ids"], 
-                                  single_input["attention_mask"], 
-                                  params, 
-                                  max_new_tokens)
-    generated_ids.append(result)
+p_generate = jax.pmap(
+    generate, "inputs", in_axes=(0, 0, None,), out_axes=0, static_broadcasted_argnums=(2,)
+)
 
-# Combine results
-generated_ids = jnp.concatenate(generated_ids, axis=0)
+"""The `in_axes` argument to `jax.pmap` defines which axis of the positional arguments to parallelise over. The `inputs` and `params` are parallised over their first axis, which we denote by `0`. The number of generated tokens is a integer, and is thus not parallelised over, which we denote by `None`.
+
+Similarly, the `out_axes` argument defines which axis of the outputs are parallelised over, which in this case is the first axis.
+
+The number of maximum generated tokens `max_new_tokens` undergoes control flow in `generate`. However, JIT requires concrete values to trace out the transformed function (see [Control Flow](https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#control-flow) in JAX). Thus, we specify it as a static argument, meaning it is assigned as a concrete value in the control flow. This enables JIT to trace out the function for a specific value of `max_new_tokens`. The caveat is that each value of `max_new_tokens` requires it's own compilation, in-order to trace out the respective branch.
+
+To avoid re-compiling the generate function for different values of `max_new_tokens`, we'll define it as a global variable here, and pass it to the generate function each time:
+"""
+
+"""We can now compile our parallel generate function. This done automatically the first time the function is run and will take some time to complete (typically around 2-3 minutes). A good time to read the JAX [Quick Start Guide](https://jax.readthedocs.io/en/latest/notebooks/quickstart.html) if you haven't already!"""
+
+_ = p_generate(inputs, params, max_new_tokens)
+
+"""Now that the function is compiled, we can run it again much faster using the optimised kernels:"""
+
+start = time.time()
+generated_ids = p_generate(inputs, params, max_new_tokens)
+runtime = time.time() - start
 
 """The generate function returns a batch of generated token ids. To convert these to generated text, we can decode them using the tokenizer:"""
 
