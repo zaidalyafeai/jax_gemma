@@ -163,34 +163,3 @@ tok_per_s = compute_tok_per_s(inputs["input_ids"], generated_ids, runtime)
 print(f"Runtime with pmap: {runtime}")
 print(f"Tokens per second: {tok_per_s}")
 print(pred_text[0])
-
-"""Around 635 tokens per second! For context, the same batch of inputs takes 8.4 seconds to generate on an A100 GPU in PyTorch at a rate of 122 tokens per second.
-
-To see how compiled inference holds for other inputs, we can update our input text and re-run generation again:
-"""
-
-input_text = 4 * ["A recipe for coconut pasta:", "In cricket, the cover drive"]
-inputs = tokenizer(input_text, padding="max_length", max_length=max_input_length, return_attention_mask=True, return_tensors="np")
-inputs = shard(inputs.data)
-
-start = time.time()
-generated_ids = p_generate(inputs, params, max_new_tokens)
-runtime = time.time() - start
-
-generated_ids = jax.device_get(generated_ids.reshape(-1, generated_ids.shape[-1]))
-pred_text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
-
-"""We see that a similar generation speed applies for these new inputs as well:"""
-
-tok_per_s = compute_tok_per_s(inputs["input_ids"], generated_ids, runtime)
-
-print(f"Runtime with pmap: {runtime}")
-print(f"Tokens per second: {tok_per_s}")
-print(pred_text[0])
-
-"""## Conclusion
-
-In this Colab, we introduced the Gemma model from Google DeepMind and showcased how to run inference in JAX using the Transformers library. We compiled the generate call using `jax.pmap`, giving XLA-optimised kernels for TPU. The result was generation speeds of 475 tokens per second, around 4x faster than on equivalent GPU hardware.
-
-It's worth noting that the Cloud TPU v2s used in the Google Colab free-tier are now 3 generations old. Running the same code on the latest TPU hardware (e.g. TPU v4 or v5e) gives a significant performance gain compared to older generation v2s.
-"""
