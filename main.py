@@ -35,8 +35,6 @@ jax.devices()
 JAX comes pre-installed on Colab TPUs at the correct version, so there's no need to re-install it. However, we do need to updgrade Transformers to the latest version, since the Gemma model is only included in the latest library release:
 """
 
-!pip install --upgrade --quiet transformers
-
 """## Load the Model
 
 The Gemma model can be loaded using the familiar [`from_pretrained`](https://huggingface.co/docs/transformers/v4.38.1/en/main_classes/model#transformers.FlaxPreTrainedModel.from_pretrained) method in Transformers. This method downloads the model weights from the Hugging Face Hub the first time it is called, and subsequently intialises the Gemma model using these weights.
