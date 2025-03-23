@@ -70,19 +70,30 @@ parser.add_argument('--batch_size', type=int, default=8,
                     help='Batch size for generation (default: 8, must be a multiple of 8 for TPU)')
 parser.add_argument('--prompt', type=str, default="Write an article about AI",
                     help='Prompt text to use for generation (default: "Write an article about AI")')
+parser.add_argument('--precision', type=str, default="bfloat16", choices=["bfloat16", "float32", "float16"],
+                    help='Floating point precision to use (default: bfloat16)')
 args = parser.parse_args()
 
 model_name = args.model_name
 max_new_tokens = args.max_new_tokens
 batch_size = args.batch_size
 prompt = args.prompt
+precision = args.precision
+
+# Map string precision to JAX dtype
+dtype_map = {
+    "bfloat16": jnp.bfloat16,
+    "float32": jnp.float32,
+    "float16": jnp.float16
+}
+dtype = dtype_map[precision]
 
 # Ensure batch size is a multiple of device count
 num_devices = jax.device_count()
 if batch_size % num_devices != 0:
     raise ValueError(f"Batch size ({batch_size}) must be a multiple of device count ({num_devices})")
 
-model, params = FlaxGemmaForCausalLM.from_pretrained(model_name, revision="flax", _do_init=False, dtype=jnp.bfloat16, token=hf_token)
+model, params = FlaxGemmaForCausalLM.from_pretrained(model_name, revision="flax", _do_init=False, dtype=dtype, token=hf_token)
 
 """If you're coming from PyTorch, the only major difference in API is how the model and parameters are handled. PyTorch is a _stateful_ framework, in which the weights are stored within the model instance. In JAX, most transformations (notably `jax.jit`) require functions that are _stateless_, meaning that they have no side effects (see [Stateful Computations](https://jax.readthedocs.io/en/latest/jax-101/07-state.html) in JAX). Since Flax models are designed to work well with JAX transformations, they too are stateless. This means that the model weights are stored **outside** of the model definition, and need to be passed as an input during inference.
 
