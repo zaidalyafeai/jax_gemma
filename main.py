@@ -44,6 +44,11 @@ We'll load the weights for the base 2B model by specifying the corresponding mod
 We'll set the data-type (dtype) of the computation to bfloat16, which is faster than float32 while achieving similar accuracy. Finally, we'll set the flag `_do_init=False`, which improves the loading of large models in Transformers by skipping initialising a dummy set of parameters that are subsequently overriden by the pre-trained ones.
 """
 
+from kaggle_secrets import UserSecretsClient
+user_secrets = UserSecretsClient()
+hf_token = user_secrets.get_secret("HF_TOKEN")
+
+
 import time
 
 import jax
@@ -54,7 +59,7 @@ from flax.training.common_utils import shard
 
 from transformers import FlaxGemmaForCausalLM, AutoTokenizer
 
-model, params = FlaxGemmaForCausalLM.from_pretrained("google/gemma-2b-it", revision="flax", _do_init=False, dtype=jnp.bfloat16)
+model, params = FlaxGemmaForCausalLM.from_pretrained("google/gemma-2b-it", revision="flax", _do_init=False, dtype=jnp.bfloat16, token=hf_token)
 
 """If you're coming from PyTorch, the only major difference in API is how the model and parameters are handled. PyTorch is a _stateful_ framework, in which the weights are stored within the model instance. In JAX, most transformations (notably `jax.jit`) require functions that are _stateless_, meaning that they have no side effects (see [Stateful Computations](https://jax.readthedocs.io/en/latest/jax-101/07-state.html) in JAX). Since Flax models are designed to work well with JAX transformations, they too are stateless. This means that the model weights are stored **outside** of the model definition, and need to be passed as an input during inference.
 
@@ -63,7 +68,7 @@ We see a warning that the model parameters were loaded in bfloat16 precision - t
 The corresponding tokenizer can now be loaded using a similar API:
 """
 
-tokenizer = AutoTokenizer.from_pretrained("google/gemma-2b-it")
+tokenizer = AutoTokenizer.from_pretrained("google/gemma-2b-it", token=hf_token)
 
 """## Define Inputs
 
