@@ -66,12 +66,35 @@ parser.add_argument('--model_name', type=str, default="google/gemma-2b-it",
                     help='The model name or path (default: google/gemma-2b-it)')
 parser.add_argument('--max_new_tokens', type=int, default=4096,
                     help='Maximum number of new tokens to generate (default: 4096)')
+parser.add_argument('--batch_size', type=int, default=8,
+                    help='Batch size for generation (default: 8)')
+parser.add_argument('--max_input_length', type=int, default=32,
+                    help='Maximum input length for tokenizer (default: 32)')
 args = parser.parse_args()
 
 model_name = args.model_name
 max_new_tokens = args.max_new_tokens
+batch_size = args.batch_size
+max_input_length = args.max_input_length
 
-model, params = FlaxGemmaForCausalLM.from_pretrained(model_name, revision="flax", _do_init=False, dtype=jnp.bfloat16, token=hf_token)
+# Check if using 7B model, and adjust batch size if needed
+if "7b" in model_name.lower():
+    # Use a smaller batch size for the 7B model
+    batch_size = min(batch_size, 2)  # Reduce to 2 or even 1 if needed
+    print(f"Using 7B model - adjusted batch size to {batch_size}")
+    
+    # For even more memory savings with 7B model:
+    max_new_tokens = min(max_new_tokens, 1024)  # Generate fewer tokens
+    print(f"Using 7B model - adjusted max_new_tokens to {max_new_tokens}")
+
+# Load the model with appropriate settings
+model, params = FlaxGemmaForCausalLM.from_pretrained(
+    model_name, 
+    revision="flax", 
+    _do_init=False, 
+    dtype=jnp.bfloat16, 
+    token=hf_token
+)
 
 """If you're coming from PyTorch, the only major difference in API is how the model and parameters are handled. PyTorch is a _stateful_ framework, in which the weights are stored within the model instance. In JAX, most transformations (notably `jax.jit`) require functions that are _stateless_, meaning that they have no side effects (see [Stateful Computations](https://jax.readthedocs.io/en/latest/jax-101/07-state.html) in JAX). Since Flax models are designed to work well with JAX transformations, they too are stateless. This means that the model weights are stored **outside** of the model definition, and need to be passed as an input during inference.
 
@@ -89,11 +112,9 @@ Next, we'll define our text inputs. Since we have 8 TPU cores over which we want
 In this example, we'll define a single prompt and copy it 8 times, giving a total batch size of 8. The "per-device" batch size is then 1/8 of this, or 1. In practice, this is not very useful or realistic, since each of our parallel computations will be processing the same input. However, you're free to extend this to use more realistic prompts than the one given below. Just ensure that the resulting batch size is a multiple of 8.
 """
 
-input_text = 8 * ["Write an article about AI"]
+input_text = batch_size * ["Write an article about AI"]
 
 """We can pre-process our input text to token ids using the tokenizer. TPUs expect inputs of static shape, so we'll define our maximum prompt length to be 64, and always pad our inputs to this sequence length:"""
-
-max_input_length = 32
 
 inputs = tokenizer(
     input_text,
