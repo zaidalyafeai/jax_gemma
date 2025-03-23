@@ -28,12 +28,14 @@ To connect to a TPU v2, click on the button `Connect TPU` in the top right-hand 
 
 import jax
 
-print(jax.devices())
+jax.devices()
 
 """Great! We have a TPU device with 8 chips. In this notebook, we'll leverage *data parallelism* across these 8 chips, by sending 1/8 of our batch to each chip and generating the LLM outputs in parallel. TPUs shine at higher batch-sizes, where computations can easily be distributed across devices.
 
 JAX comes pre-installed on Colab TPUs at the correct version, so there's no need to re-install it. However, we do need to updgrade Transformers to the latest version, since the Gemma model is only included in the latest library release:
 """
+
+!pip install --upgrade --quiet transformers
 
 """## Load the Model
 
@@ -54,7 +56,6 @@ from flax.training.common_utils import shard
 
 from transformers import FlaxGemmaForCausalLM, AutoTokenizer
 
-print("Loading model")
 model, params = FlaxGemmaForCausalLM.from_pretrained("google/gemma-2b-it", revision="flax", _do_init=False, dtype=jnp.bfloat16)
 
 """If you're coming from PyTorch, the only major difference in API is how the model and parameters are handled. PyTorch is a _stateful_ framework, in which the weights are stored within the model instance. In JAX, most transformations (notably `jax.jit`) require functions that are _stateless_, meaning that they have no side effects (see [Stateful Computations](https://jax.readthedocs.io/en/latest/jax-101/07-state.html) in JAX). Since Flax models are designed to work well with JAX transformations, they too are stateless. This means that the model weights are stored **outside** of the model definition, and need to be passed as an input during inference.
@@ -63,7 +64,7 @@ We see a warning that the model parameters were loaded in bfloat16 precision - t
 
 The corresponding tokenizer can now be loaded using a similar API:
 """
-print("Loading tokenizer")
+
 tokenizer = AutoTokenizer.from_pretrained("google/gemma-2b-it")
 
 """## Define Inputs
@@ -78,7 +79,7 @@ input_text = 8 * ["Write an article about AI"]
 """We can pre-process our input text to token ids using the tokenizer. TPUs expect inputs of static shape, so we'll define our maximum prompt length to be 64, and always pad our inputs to this sequence length:"""
 
 max_input_length = 32
-print("Tokenizing inputs")
+
 inputs = tokenizer(
     input_text,
     padding="max_length",
@@ -112,7 +113,6 @@ def generate(inputs, params, max_new_tokens):
     )
     return generated_ids.sequences
 
-print("Compiling generate function")
 p_generate = jax.pmap(
     generate, "inputs", in_axes=(0, 0, None,), out_axes=0, static_broadcasted_argnums=(2,)
 )
@@ -134,7 +134,6 @@ _ = p_generate(inputs, params, max_new_tokens)
 
 """Now that the function is compiled, we can run it again much faster using the optimised kernels:"""
 
-print("Running generate function")
 start = time.time()
 generated_ids = p_generate(inputs, params, max_new_tokens)
 runtime = time.time() - start
@@ -150,6 +149,7 @@ def compute_tok_per_s(input_ids, generated_ids, runtime):
     total_inputs = np.prod(input_ids.shape)
     total_outputs = np.prod(generated_ids.shape)
     tokens_generated = total_outputs - total_inputs
+    print(f"Tokens generated: {tokens_generated}")
     tokens_per_s = tokens_generated / runtime
     return tokens_per_s
 
@@ -160,3 +160,34 @@ tok_per_s = compute_tok_per_s(inputs["input_ids"], generated_ids, runtime)
 print(f"Runtime with pmap: {runtime}")
 print(f"Tokens per second: {tok_per_s}")
 print(pred_text[0])
+
+"""Around 635 tokens per second! For context, the same batch of inputs takes 8.4 seconds to generate on an A100 GPU in PyTorch at a rate of 122 tokens per second.
+
+To see how compiled inference holds for other inputs, we can update our input text and re-run generation again:
+"""
+
+input_text = 4 * ["A recipe for coconut pasta:", "In cricket, the cover drive"]
+inputs = tokenizer(input_text, padding="max_length", max_length=max_input_length, return_attention_mask=True, return_tensors="np")
+inputs = shard(inputs.data)
+
+start = time.time()
+generated_ids = p_generate(inputs, params, max_new_tokens)
+runtime = time.time() - start
+
+generated_ids = jax.device_get(generated_ids.reshape(-1, generated_ids.shape[-1]))
+pred_text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+
+"""We see that a similar generation speed applies for these new inputs as well:"""
+
+tok_per_s = compute_tok_per_s(inputs["input_ids"], generated_ids, runtime)
+
+print(f"Runtime with pmap: {runtime}")
+print(f"Tokens per second: {tok_per_s}")
+print(pred_text[0])
+
+"""## Conclusion
+
+In this Colab, we introduced the Gemma model from Google DeepMind and showcased how to run inference in JAX using the Transformers library. We compiled the generate call using `jax.pmap`, giving XLA-optimised kernels for TPU. The result was generation speeds of 475 tokens per second, around 4x faster than on equivalent GPU hardware.
+
+It's worth noting that the Cloud TPU v2s used in the Google Colab free-tier are now 3 generations old. Running the same code on the latest TPU hardware (e.g. TPU v4 or v5e) gives a significant performance gain compared to older generation v2s.
+"""
