@@ -48,10 +48,6 @@ We'll set the data-type (dtype) of the computation to bfloat16, which is faster 
 
 import time
 import argparse
-
-import os
-os.environ['JAX_PLATFORMS'] = ''
-
 import jax
 import jax.numpy as jnp
 import numpy as np
