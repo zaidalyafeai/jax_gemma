@@ -1,2 +1,3 @@
 transformers
 jax[tpu]
+flax
