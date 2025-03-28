@@ -28,7 +28,7 @@ To connect to a TPU v2, click on the button `Connect TPU` in the top right-hand 
 
 import jax
 
-jax.devices()
+print(jax.devices())
 
 """Great! We have a TPU device with 8 chips. In this notebook, we'll leverage *data parallelism* across these 8 chips, by sending 1/8 of our batch to each chip and generating the LLM outputs in parallel. TPUs shine at higher batch-sizes, where computations can easily be distributed across devices.
 
