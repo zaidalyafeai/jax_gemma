@@ -44,9 +44,6 @@ We'll load the weights for the base 2B model by specifying the corresponding mod
 We'll set the data-type (dtype) of the computation to bfloat16, which is faster than float32 while achieving similar accuracy. Finally, we'll set the flag `_do_init=False`, which improves the loading of large models in Transformers by skipping initialising a dummy set of parameters that are subsequently overriden by the pre-trained ones.
 """
 
-from kaggle_secrets import UserSecretsClient
-user_secrets = UserSecretsClient()
-hf_token = user_secrets.get_secret("HF_TOKEN")
 
 
 import time
@@ -60,6 +57,7 @@ from flax.training.common_utils import shard
 import random
 from transformers import FlaxGemmaForCausalLM, AutoTokenizer
 import os
+hf_token = os.environ.get("HF_TOKEN")
 # Add argument parsing
 parser = argparse.ArgumentParser(description='Run JAX Gemma model inference')
 parser.add_argument('--model_name', type=str, default="google/gemma-2b-it",
