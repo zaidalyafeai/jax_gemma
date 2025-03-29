@@ -7,10 +7,17 @@ from jax.sharding import Mesh
 from jax.sharding import NamedSharding
 import numpy as np
 import os
+import argparse
 
-model_name = "google/gemma-2b-it"
-max_new_tokens = 4096
-dtype = jnp.bfloat16
+parser = argparse.ArgumentParser()
+parser.add_argument("--model_name", type=str, default="google/gemma-2b-it")
+parser.add_argument("--max_new_tokens", type=int, default=4096)
+parser.add_argument("--dtype", type=str, default="bfloat16")
+
+args = parser.parse_args()
+model_name = args.model_name
+max_new_tokens = args.max_new_tokens
+dtype = jnp.bfloat16 if args.dtype == "bfloat16" else jnp.float32
 hf_token = os.environ["HF_TOKEN"]
 
 # https://github.com/huggingface/transformers/issues/22224
@@ -68,7 +75,6 @@ params = jax.tree_util.tree_map(
 prompt = ["write an article about AI"] * 8
 inputs = tokenizer(prompt, return_tensors="np")
 input_ids = jnp.array(inputs["input_ids"])
-print(input_ids)
 
 import time
 def generate(input_ids, params, max_new_tokens):
