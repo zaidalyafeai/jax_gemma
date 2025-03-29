@@ -80,7 +80,7 @@ def generate(input_ids, params, max_new_tokens):
         max_new_tokens=max_new_tokens,
         do_sample=True,
     )
-    return generated_ids.sequences.squeeze(1)
+    return generated_ids.sequences
 
 p_generate = jax.pmap(
     generate,
@@ -90,7 +90,7 @@ p_generate = jax.pmap(
 )
 
 start = time.time()
-generated_ids = p_generate(input_ids, params, max_new_tokens)
+generated_ids = p_generate(input_ids, params, max_new_tokens).squeeze(1)
 pred_text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
 runtime = time.time() - start
 num_tokens = generated_ids.shape[0] * generated_ids.shape[1]
