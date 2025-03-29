@@ -13,12 +13,12 @@ os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 """## Load model"""
 
 keras.config.set_floatx("bfloat16")
+# Create a device mesh with (1, 8) shape so that the weights are sharded across
+# all 8 TPUs.
 device_mesh = keras.distribution.DeviceMesh(
     (1, 8),
     ["batch", "model"],
     devices=keras.distribution.list_devices())
-
-"""`LayoutMap` from the distribution API specifies how the weights and tensors should be sharded or replicated, using the string keys, for example, `token_embedding/embeddings` below, which are treated like regex to match tensor paths. Matched tensors are sharded with model dimensions (8 TPUs); others will be fully replicated."""
 
 model_dim = "model"
 
@@ -36,16 +36,12 @@ layout_map["decoder_block.*attention_output.*kernel"] = (
 layout_map["decoder_block.*ffw_gating.*kernel"] = (model_dim, None)
 layout_map["decoder_block.*ffw_linear.*kernel"] = (None, model_dim)
 
-"""`ModelParallel` allows you to shard model weights or activation tensors across all devcies on the `DeviceMesh`. In this case, some of the Gemma 7B model weights are sharded across 8 TPU cores according to the `layout_map` defined above. Now load the model in the distributed way."""
-
-model_parallel = keras.distribution.ModelParallel(
-    device_mesh, layout_map, batch_dim_name="batch")
+model_parallel = keras.distribution.ModelParallel(layout_map=layout_map, batch_dim_name="batch")
 
 keras.distribution.set_distribution(model_parallel)
 
 # Download the Gemma 7B model.
-gemma_lm = keras_nlp.models.GemmaCausalLM.from_preset("gemma_instruct_7b_en")
-
+gemma_lm = keras_nlp.models.GemmaCausalLM.from_preset("gemma_instruct_2b_en")
 # Add timing and token counting
 
 # Function to measure tokens per second
