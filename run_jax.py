@@ -118,7 +118,7 @@ while len(input_text) < batch_size:
 
 """We can pre-process our input text to token ids using the tokenizer. TPUs expect inputs of static shape, so we'll define our maximum prompt length to be 64, and always pad our inputs to this sequence length:"""
 
-max_input_length = 32
+max_input_length = 512
 
 inputs = tokenizer(
     input_text,
@@ -174,12 +174,12 @@ _ = p_generate(inputs, params, max_new_tokens)
 
 start = time.time()
 generated_ids = p_generate(inputs, params, max_new_tokens)
-runtime = time.time() - start
 
 """The generate function returns a batch of generated token ids. To convert these to generated text, we can decode them using the tokenizer:"""
 
 generated_ids = jax.device_get(generated_ids.reshape(-1, generated_ids.shape[-1]))
 pred_text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+runtime = time.time() - start
 
 """So how fast was generation? Let's compute the number of tokens generated per-second (tok/s):"""
 
@@ -187,6 +187,7 @@ def compute_tok_per_s(input_ids, generated_ids, runtime):
     total_inputs = np.prod(input_ids.shape)
     total_outputs = np.prod(generated_ids.shape)
     tokens_generated = total_outputs - total_inputs
+    print(f"Elapsed Time: {runtime}")
     print(f"Tokens generated: {tokens_generated}")
     tokens_per_s = tokens_generated / runtime
     return tokens_per_s
