@@ -1,4 +1,8 @@
 import os
+# The Keras 3 distribution API is only implemented for the JAX backend for now
+os.environ["KERAS_BACKEND"] = "jax"
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+
 import jax
 import time
 import keras
