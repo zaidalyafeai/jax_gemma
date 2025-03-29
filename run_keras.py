@@ -10,10 +10,6 @@ import keras_nlp
 
 print(jax.devices())
 
-# The Keras 3 distribution API is only implemented for the JAX backend for now
-os.environ["KERAS_BACKEND"] = "jax"
-os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
-
 """## Load model"""
 
 keras.config.set_floatx("bfloat16")
@@ -51,7 +47,12 @@ gemma_lm = keras_nlp.models.GemmaCausalLM.from_preset("gemma_instruct_2b_en")
 # Function to measure tokens per second
 def measure_tps(prompt, max_length):
     start_time = time.time()
-    output = gemma_lm.generate(prompt, max_length=max_length)
+    # Add attention mask preprocessing
+    output = gemma_lm.generate(
+        prompt, 
+        max_length=max_length,
+        sequence_length=64,  # Explicitly set sequence length
+    )
     end_time = time.time()
     
     # Calculate total tokens (input + output)
@@ -66,6 +67,6 @@ def measure_tps(prompt, max_length):
     
     return output
 
-# Test the model with TPS measurement
+# Test with a shorter sequence first
 prompt = "Best comedy movies: "
-measure_tps(prompt, max_length=64)
+measure_tps(prompt, max_length=32)  # Reduced from 64 to 32 for initial testing
