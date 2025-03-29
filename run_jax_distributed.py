@@ -1,9 +1,13 @@
 import jax
 import jax.numpy as jnp
-from flax import jax_utils
-from flax.training.common_utils import shard
 from transformers import FlaxGemmaForCausalLM, AutoTokenizer
+from jax.sharding import PartitionSpec as P
+import jax.numpy as jnp
+from jax.sharding import Mesh
+from jax.sharding import NamedSharding
+import numpy as np
 import os
+
 model_name = "google/gemma-2b-it"
 max_new_tokens = 4096
 dtype = jnp.bfloat16
@@ -12,13 +16,6 @@ hf_token = os.environ["HF_TOKEN"]
 # https://github.com/huggingface/transformers/issues/22224
 model, params = FlaxGemmaForCausalLM.from_pretrained(model_name, revision="flax", _do_init=False, dtype=dtype, token=hf_token)
 tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
-
-from jax.sharding import PartitionSpec as P
-import jax
-import jax.numpy as jnp
-from jax.sharding import Mesh
-from jax.sharding import NamedSharding
-import numpy as np
 
 def get_partition_rules():
     """Returns partitioning rules for the model parameters."""
@@ -93,7 +90,6 @@ p_generate = jax.pmap(
 )
 
 start = time.time()
-# Pass the input_ids JAX array instead of the entire inputs BatchEncoding
 generated_ids = p_generate(input_ids, params, max_new_tokens)
 pred_text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
 runtime = time.time() - start
