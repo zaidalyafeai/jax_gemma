@@ -87,6 +87,8 @@ def generate(input_ids, params, max_new_tokens):
 # Prepare inputs properly for JAX
 input_ids = jnp.array(inputs["input_ids"])
 # Replicate across devices
+print(input_ids.shape)
+print(jax.local_device_count())
 input_ids = input_ids.reshape((jax.local_device_count(), -1))
 
 p_generate = jax.pmap(
