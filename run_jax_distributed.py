@@ -72,16 +72,10 @@ params = jax.tree_util.tree_map(
 
 prompt = "Write an article about global warming"
 inputs = tokenizer(prompt, return_tensors="np")
-input_ids = jnp.array(inputs["input_ids"])
 
 
 import time
-def generate(inputs, params, max_new_tokens):
-    # Convert input_ids to JAX array
-    input_ids = jnp.array(inputs["input_ids"])
-    # Ensure input_ids is sharded appropriately
-    input_ids = input_ids.reshape((jax.local_device_count(), -1))
-
+def generate(input_ids, params, max_new_tokens):
     generated_ids = model.generate(
         input_ids=input_ids,
         params=params,
@@ -90,15 +84,20 @@ def generate(inputs, params, max_new_tokens):
     )
     return generated_ids.sequences
 
+# Prepare inputs properly for JAX
+input_ids = jnp.array(inputs["input_ids"])
+# Replicate across devices
+input_ids = input_ids.reshape((jax.local_device_count(), -1))
+
 p_generate = jax.pmap(
     generate,
-    in_axes=(0, None, None),  # Map only the inputs, not params or max_new_tokens
+    in_axes=(0, None, None),  # Map only the input_ids, not params or max_new_tokens
     out_axes=0,
     static_broadcasted_argnums=(2,)
 )
 
 start = time.time()
-generated_ids = p_generate(inputs, params, max_new_tokens)
+generated_ids = p_generate(input_ids, params, max_new_tokens)
 generated_ids = jax.device_get(generated_ids.reshape(-1, generated_ids.shape[-1]))
 pred_text = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
 runtime = time.time() - start
