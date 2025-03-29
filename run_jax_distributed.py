@@ -70,7 +70,7 @@ params = jax.tree_util.tree_map(
     lambda x, spec: jax.device_put(x, spec), params, sharding_specs
 )
 
-prompt = "Write an article about global warming"
+prompt = ["Write an article about global warming"] * 8
 inputs = tokenizer(prompt, return_tensors="np")
 
 
