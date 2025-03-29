@@ -1,3 +1,4 @@
+transformers==4.50.0
 jax[tpu]==0.5.2
 jaxlib==0.5.1
 flax==0.10.4
